@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Last Human</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --warm:   oklch(0.82 0.13 122);
+    --warm-2: oklch(0.84 0.12 95);
+    --cool:   oklch(0.80 0.13 182);
+    --cool-2: oklch(0.82 0.12 205);
+    --ink:    oklch(0.95 0.012 200);
+    --ink-dim: oklch(0.72 0.02 210);
+    --blue:   oklch(0.62 0.17 255);
+    --mono: "JetBrains Mono", monospace;
+    --display: "Space Mono", monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; background: #000; }
+  body { font-family: var(--mono); color: var(--ink); cursor: default; user-select: none; -webkit-font-smoothing: antialiased; }
+  #stage { position: fixed; inset: 0; }
+  #bg { position: absolute; inset: 0; display: block; transition: filter 0.8s ease; }
+  body[data-scene="illusion_cards"] #bg { filter: blur(6px) brightness(0.7); }
+
+  #scan {
+    position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 1.2s ease;
+    background: repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0, rgba(0,0,0,0) 2px, rgba(0,0,0,0.22) 3px, rgba(0,0,0,0) 4px);
+    mix-blend-mode: multiply;
+  }
+  body[data-scene="blue"] #scan { opacity: 0.9; }
+  body[data-scene="loading"] #scan { opacity: 0.5; }
+
+  #grain {
+    position: absolute; inset: -50%; pointer-events: none; opacity: 0.05;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    animation: grain 0.5s steps(2) infinite;
+  }
+  @keyframes grain { 0%{transform:translate(0,0)} 50%{transform:translate(-3%,2%)} 100%{transform:translate(2%,-2%)} }
+
+  #ui { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; pointer-events: none; }
+  #ui .scene { position: absolute; inset: 0; display: grid; place-items: center; opacity: 1; }
+  .pane { display: flex; flex-direction: column; align-items: center; gap: 22px; padding: 40px; }
+
+  .kicker { font-family: var(--mono); font-weight: 300; font-size: 12px; letter-spacing: 0.42em; text-transform: uppercase; color: var(--ink-dim); }
+  .title { font-family: var(--display); font-weight: 700; letter-spacing: 0.04em; line-height: 1; }
+  .glow-cool { text-shadow: 0 0 26px oklch(0.8 0.13 190 / 0.55); }
+  .glow-warm { text-shadow: 0 0 26px oklch(0.82 0.13 120 / 0.5); color: var(--warm); }
+  .glow-dim  { text-shadow: 0 0 20px oklch(0.7 0.02 200 / 0.5); color: var(--ink-dim); }
+
+  .boot { font-size: 13px; line-height: 1.7; color: oklch(0.86 0.06 235); text-align: left; min-width: 360px; }
+  .boot b { color: oklch(0.92 0.08 235); font-weight: 700; }
+  .cursor::after { content: "▌"; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .bar { width: 360px; height: 3px; background: rgba(255,255,255,0.12); position: relative; overflow: hidden; }
+  .bar > i { position: absolute; left: 0; top: 0; bottom: 0; width: 0%; background: linear-gradient(90deg, var(--cool), var(--cool-2)); box-shadow: 0 0 14px var(--cool); }
+  .pct { font-size: 12px; letter-spacing: 0.3em; color: var(--ink-dim); }
+  .log { height: 1.4em; overflow: hidden; font-size: 11px; letter-spacing: 0.18em; color: oklch(0.6 0.04 200); }
+
+  .count { font-family: var(--display); font-weight: 700; font-size: clamp(80px, 16vw, 230px); line-height: 0.9; }
+  .of { font-size: 12px; letter-spacing: 0.32em; color: var(--ink-dim); }
+
+  .choose-hint { font-size: 12px; letter-spacing: 0.4em; color: var(--ink-dim); text-transform: uppercase; }
+  .worlds { position: absolute; inset: 0; pointer-events: none; }
+  .world-box {
+    position: absolute; top: 50%; transform: translateY(-50%); pointer-events: auto; cursor: pointer;
+    width: 230px; padding: 22px 24px; background: rgba(8,14,18,0.42); backdrop-filter: blur(6px);
+    border: 1px solid rgba(255,255,255,0.14); text-align: left;
+    transition: transform 0.4s cubic-bezier(.2,.8,.2,1), border-color 0.3s, box-shadow 0.3s, background 0.3s; opacity: 1;
+  }
+  .world-box .wlabel { font-family: var(--display); font-weight: 700; font-size: 26px; letter-spacing: 0.08em; }
+  .world-box .wsub { margin-top: 8px; font-size: 11px; line-height: 1.6; letter-spacing: 0.12em; color: var(--ink-dim); }
+  .world-box .wenter { margin-top: 16px; font-size: 11px; letter-spacing: 0.28em; opacity: 0; transition: opacity 0.3s; }
+  .world-box:hover .wenter { opacity: 1; }
+  .world-box.left  { left: 7vw; border-color: oklch(0.82 0.13 120 / 0.45); }
+  .world-box.right { right: 7vw; border-color: oklch(0.80 0.13 190 / 0.45); }
+  .world-box.left .wlabel  { color: var(--warm); }
+  .world-box.right .wlabel { color: var(--cool); }
+  .world-box.left:hover  { transform: translateY(-50%) translateX(10px); box-shadow: 0 0 50px oklch(0.82 0.13 120 / 0.4); background: rgba(20,24,10,0.5); }
+  .world-box.right:hover { transform: translateY(-50%) translateX(-10px); box-shadow: 0 0 50px oklch(0.80 0.13 190 / 0.4); background: rgba(8,22,24,0.5); }
+
+  .arrow { position: absolute; top: 50%; transform: translateY(-50%); font-size: 13px; letter-spacing: 0.2em; color: var(--ink-dim); opacity: 0.85; }
+  .arrow.left { left: calc(7vw + 240px); }
+  .arrow.right { right: calc(7vw + 240px); text-align: right; }
+  .arrow .ttl { display: block; font-size: 10px; letter-spacing: 0.3em; }
+
+  /* illusion scene chrome */
+  .scene-title { position: absolute; top: 7vh; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .scene-caption { position: absolute; bottom: 15vh; left: 0; right: 0; text-align: center; font-size: 13px; letter-spacing: 0.2em; color: var(--ink-dim); padding: 0 10vw; text-wrap: pretty; }
+  .fox-tip { position: absolute; left: 50%; top: 52%; transform: translateX(20px); font-size: 12px; letter-spacing: 0.28em; color: var(--ink); opacity: 0; transition: opacity 0.5s; }
+  .fox-tip.show { opacity: 0.9; animation: pulse 2.2s ease-in-out infinite; }
+
+  .memcards { position: absolute; inset: 0; display: grid; place-content: center; grid-template-columns: repeat(2, 304px); gap: 20px; pointer-events: none; }
+  .memcards.three { grid-template-columns: repeat(3, 262px); }
+  .qworlds { margin-top: 26px; display: flex; gap: 18px; align-items: center; font-family: var(--display); font-weight: 700; font-size: 22px; letter-spacing: 0.1em; }
+  .qworlds .qsep { color: var(--ink-dim); font-weight: 400; }
+  .memcard {
+    pointer-events: auto; cursor: pointer; padding: 22px 24px; min-height: 124px; position: relative;
+    background: rgba(8,16,16,0.5); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,0.14);
+    display: flex; flex-direction: column; gap: 8px; text-align: left; transition: transform 0.3s, border-color 0.3s, box-shadow 0.3s, background 0.3s;
+  }
+  .memcard:hover { transform: translateY(-4px); border-color: oklch(0.8 0.13 190 / 0.5); box-shadow: 0 0 44px oklch(0.78 0.13 190 / 0.28); background: rgba(12,24,22,0.6); }
+  .memcard .mn { font-size: 11px; letter-spacing: 0.3em; }
+  .memcard .mt { font-family: var(--display); font-weight: 700; font-size: 21px; letter-spacing: 0.03em; }
+  .memcard .ms { font-size: 11px; line-height: 1.6; letter-spacing: 0.08em; color: var(--ink-dim); }
+  .memcard.visited { opacity: 0.62; }
+  .memcard.visited::after { content: "✓ seen"; position: absolute; top: 16px; right: 18px; font-size: 10px; letter-spacing: 0.2em; color: var(--cool); }
+
+  .deeper { position: absolute; bottom: 8vh; left: 0; right: 0; text-align: center; font-size: 12px; letter-spacing: 0.34em; color: var(--cool); opacity: 0; transition: 0.5s; }
+  .deeper.show { opacity: 0.9; animation: pulse 2.2s ease-in-out infinite; }
+
+  #hint { position: absolute; bottom: 38px; left: 50%; transform: translateX(-50%); font-size: 11px; letter-spacing: 0.34em; color: var(--ink-dim); text-transform: uppercase; opacity: 0; transition: opacity 0.6s; pointer-events: none; }
+  #hint.show { opacity: 0.85; animation: pulse 2.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.35; } }
+
+  #hud { position: absolute; top: 22px; right: 26px; display: flex; gap: 18px; align-items: center; pointer-events: auto; z-index: 20; }
+  #hud .step { font-size: 10px; letter-spacing: 0.3em; color: var(--ink-dim); }
+  .mute { background: none; border: 1px solid rgba(255,255,255,0.18); color: var(--ink-dim); font-family: var(--mono); font-size: 10px; letter-spacing: 0.2em; padding: 7px 11px; cursor: pointer; transition: 0.2s; }
+  .mute:hover { color: var(--ink); border-color: rgba(255,255,255,0.4); }
+
+  #glitch { position: absolute; inset: 0; pointer-events: none; opacity: 0; z-index: 50; }
+  #glitch.run { animation: glitchrun 0.42s steps(1) forwards; }
+  @keyframes glitchrun {
+    0% { opacity: 1; background: repeating-linear-gradient(to bottom, rgba(255,0,80,0.08) 0 4px, rgba(0,255,200,0.08) 4px 8px); clip-path: inset(0 0 60% 0); transform: translateX(8px); }
+    20% { background: rgba(120,200,255,0.12); clip-path: inset(40% 0 10% 0); transform: translateX(-12px); }
+    40% { background: repeating-linear-gradient(to bottom, rgba(0,255,200,0.1) 0 3px, rgba(0,0,0,0) 3px 7px); clip-path: inset(10% 0 40% 0); transform: translateX(6px); }
+    60% { background: rgba(255,255,255,0.14); clip-path: inset(0); transform: translateX(0); }
+    80% { background: rgba(0,0,0,0.5); opacity: 1; }
+    100% { opacity: 0; background: transparent; }
+  }
+
+  #fade { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 45; transition: opacity 1.1s ease; }
+  #fade.on { opacity: 1; }
+
+  #path-ph { position: absolute; inset: 0; display: grid; place-items: center; z-index: 46; opacity: 0; pointer-events: none; transition: opacity 0.8s ease; }
+  #path-ph.on { opacity: 1; pointer-events: auto; }
+  #path-ph .pp { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+  #path-ph .ppt { font-family: var(--display); font-weight: 700; font-size: clamp(34px, 6vw, 72px); letter-spacing: 0.06em; }
+  #path-ph .ppd { font-size: 12px; letter-spacing: 0.32em; color: var(--ink-dim); text-transform: uppercase; }
+  .ghost-btn { margin-top: 12px; background: none; border: 1px solid rgba(255,255,255,0.22); color: var(--ink); font-family: var(--mono); font-size: 11px; letter-spacing: 0.26em; padding: 12px 22px; cursor: pointer; text-transform: uppercase; transition: 0.2s; }
+  .ghost-btn:hover { border-color: rgba(255,255,255,0.55); box-shadow: 0 0 30px rgba(255,255,255,0.12); }
+</style>
+</head>
+<body data-scene="blue">
+  <div id="stage" data-screen-label="The Last Human">
+    <canvas id="bg"></canvas>
+    <div id="scan"></div>
+    <div id="grain"></div>
+
+    <div id="ui"></div>
+    <div id="hint"></div>
+
+    <div id="hud">
+      <span class="step" id="step">00 / 03</span>
+      <button class="mute" id="mute">♪ SOUND ON</button>
+    </div>
+
+    <div id="fade"></div>
+    <div id="path-ph">
+      <div class="pp">
+        <div class="kicker" id="pp-kick">ENTERING</div>
+        <div class="ppt" id="pp-title">HARMONY</div>
+        <div class="ppd">// scenes in production</div>
+        <button class="ghost-btn" id="pp-back">RETURN TO EARTH</button>
+      </div>
+    </div>
+
+    <div id="glitch"></div>
+  </div>
+
+  <script src="tlh-audio.js"></script>
+  <script src="tlh-visuals.js"></script>
+  <script src="tlh-illusion-visuals.js"></script>
+  <script src="tlh-illusion.js"></script>
+  <script src="tlh-harmony-visuals.js"></script>
+  <script src="tlh-harmony.js"></script>
+  <script>
+  (function () {
+    "use strict";
+    const $ = (s) => document.querySelector(s);
+    const ui = $("#ui"), body = document.body, hint = $("#hint"), stepEl = $("#step");
+
+    const audio = new AudioEngine();
+    const viz = new Visuals($("#bg"));
+    viz.start();
+    if (window.ILLUSION_PRESETS) viz.registerScenes(window.ILLUSION_PRESETS);
+    if (window.HARMONY_PRESETS) viz.registerScenes(window.HARMONY_PRESETS);
+    window.__viz = viz; window.__audio = audio;
+
+    let scene = null, currentEl = null, locked = false, started = false, loadReady = false;
+    const state = { visited: new Set() };
+
+    function setHint(text) { hint.textContent = text; hint.classList.add("show"); }
+    function hideHint() { hint.classList.remove("show"); }
+    function fadeTo(on) { $("#fade").classList.toggle("on", on); }
+    function resetStage() { $("#stage").style.filter = "none"; }
+    function glitch() { const g = $("#glitch"); g.classList.remove("run"); void g.offsetWidth; g.classList.add("run"); audio.fx("glitch"); }
+
+    const api = { goTo, glitch, fadeTo, audio, viz, state, setHint, hideHint, resetStage, get el() { return currentEl; } };
+
+    // ---------- intro scenes ----------
+    const SCENES = {
+      blue: {
+        group: "intro", idx: 0,
+        tmpl: () => `
+          <div class="pane">
+            <div class="boot">
+              <div>&gt; <b>BIOSPHERE OS</b> v0.0.1 — cold boot</div>
+              <div>&gt; scanning surface .......... <b>FAILED</b></div>
+              <div>&gt; atmospheric integrity ..... <b>2.4%</b></div>
+              <div>&gt; lifeforms detected ........ <b>1</b></div>
+              <div class="cursor">&gt; awaiting operator </div>
+            </div>
+            <div class="kicker" style="margin-top:14px">press to initialise</div>
+          </div>`,
+        enter: () => setHint("click · scroll · space to begin"),
+        advance: () => goTo("loading")
+      },
+      loading: {
+        group: "intro", idx: 1,
+        tmpl: () => `
+          <div class="pane">
+            <div class="kicker">reconstructing biosphere</div>
+            <div class="bar"><i id="barfill"></i></div>
+            <div class="pct" id="pctv">000%</div>
+            <div class="log" id="logv">· allocating memory</div>
+          </div>`,
+        enter: (el) => {
+          loadReady = false;
+          const fill = el.querySelector("#barfill"), pct = el.querySelector("#pctv"), log = el.querySelector("#logv");
+          const lines = ["allocating memory", "seeding forests", "reviving oceans", "indexing the dead", "compiling birdsong", "restoring sky", "linking the network", "waking the machines"];
+          let p = 0, li = 0;
+          const tick = () => {
+            if (scene !== "loading") return;
+            p = Math.min(100, p + Math.random() * 7 + 1.5);
+            fill.style.width = p + "%";
+            pct.textContent = String(Math.floor(p)).padStart(3, "0") + "%";
+            if (Math.random() < 0.4) { log.textContent = "· " + lines[li++ % lines.length]; if (Math.random() < 0.5) audio.fx("glitch"); }
+            if (p >= 100) { loadReady = true; setHint("click · scroll · space to continue"); audio.fx("whoosh"); return; }
+            el._t = setTimeout(tick, 130 + Math.random() * 120);
+          };
+          el._t = setTimeout(tick, 400);
+        },
+        leave: (el) => clearTimeout(el._t),
+        advance: () => { if (loadReady) goTo("survivor"); }
+      },
+      survivor: {
+        group: "intro", idx: 2,
+        tmpl: () => `
+          <div class="pane">
+            <div class="kicker">surface report</div>
+            <div class="count glow-cool" id="countv">0</div>
+            <div class="title" style="font-size:18px;letter-spacing:0.34em">HUMAN&nbsp;REMAINS</div>
+            <div class="of">OF 8,000,000,000</div>
+          </div>`,
+        enter: (el) => {
+          const c = el.querySelector("#countv");
+          let ticks = 0;
+          el._iv = setInterval(() => {
+            if (scene !== "survivor") { clearInterval(el._iv); return; }
+            ticks++;
+            c.textContent = (Math.random() < 0.5 ? (Math.random() * 9 | 0) : 1);
+            if (ticks > 14) { clearInterval(el._iv); c.textContent = "1"; setHint("click · scroll · space to continue"); }
+          }, 90);
+        },
+        leave: (el) => clearInterval(el._iv),
+        advance: () => goTo("earth")
+      },
+      earth: {
+        group: "intro", idx: 3,
+        tmpl: () => `
+          <div class="pane" style="position:absolute;top:9vh;left:0;right:0;gap:10px">
+            <div class="kicker">the last human</div>
+            <div class="title glow-cool" style="font-size:clamp(34px,6vw,76px)">EARTH&nbsp;01</div>
+          </div>
+          <div class="worlds">
+            <div class="world-box left" data-path="harmony">
+              <div class="wlabel glow-warm">HARMONY</div>
+              <div class="wsub">they remembered<br/>what the world was for</div>
+              <div class="wenter" style="color:var(--warm)">› enter</div>
+            </div>
+            <div class="arrow left"><span class="ttl">west face</span>← living earth</div>
+            <div class="world-box right" data-path="illusion">
+              <div class="wlabel glow-cool">ILLUSION</div>
+              <div class="wsub">a paradise built<br/>from what we left behind</div>
+              <div class="wenter" style="color:var(--cool)">enter ›</div>
+            </div>
+            <div class="arrow right">machine eden →<span class="ttl">east face</span></div>
+          </div>
+          <div class="choose-hint" style="position:absolute;bottom:14vh;left:0;right:0">choose a world</div>`,
+        enter: (el) => {
+          hideHint();
+          el.querySelectorAll(".world-box").forEach((b) => {
+            b.addEventListener("mouseenter", () => audio.fx("drip"));
+            b.addEventListener("click", () => {
+              if (b.dataset.path === "illusion") { state.visited.clear(); audio.fx("select"); goTo("illusion_forest"); }
+              else { state.visited.clear(); audio.fx("select"); goTo("harmony_camp"); }
+            });
+          });
+        }
+      }
+    };
+    if (window.TLH_ILLUSION) Object.assign(SCENES, window.TLH_ILLUSION);
+    if (window.TLH_HARMONY) Object.assign(SCENES, window.TLH_HARMONY);
+
+    // ---------- engine ----------
+    function render(name) {
+      const def = SCENES[name];
+      const el = document.createElement("div");
+      el.className = "scene";
+      el.innerHTML = def && def.tmpl ? def.tmpl() : "";
+      ui.innerHTML = "";
+      ui.appendChild(el);
+      currentEl = el;
+      return el;
+    }
+
+    function updateStep(name) {
+      const def = SCENES[name];
+      if (def && (def.group === "ILLUSION" || def.group === "HARMONY")) stepEl.textContent = def.group;
+      else if (def && typeof def.idx === "number") stepEl.textContent = String(def.idx).padStart(2, "0") + " / 03";
+      else stepEl.textContent = "";
+    }
+
+    function goTo(name) {
+      if (locked) return;
+      locked = true;
+      if (scene && SCENES[scene] && SCENES[scene].leave) SCENES[scene].leave(currentEl, api);
+      glitch();
+      setTimeout(() => {
+        scene = name;
+        body.dataset.scene = name;
+        viz.setScene(name);
+        audio.setScene(name);
+        const el = render(name);
+        updateStep(name);
+        hideHint();
+        const def = SCENES[name];
+        if (def && def.enter) def.enter(el, api);
+        locked = false;
+      }, 190);
+    }
+
+    function enterPath(path) {
+      if (locked) return;
+      locked = true;
+      audio.fx("select");
+      $("#stage").style.transition = "filter 1.1s ease";
+      $("#stage").style.filter = "blur(10px) brightness(0.6)";
+      fadeTo(true);
+      setTimeout(() => {
+        $("#pp-title").textContent = path.toUpperCase();
+        $("#pp-title").className = "ppt " + (path === "harmony" ? "glow-warm" : "glow-cool");
+        $("#path-ph").classList.add("on");
+        locked = false;
+      }, 1150);
+    }
+    $("#pp-back").addEventListener("click", () => {
+      $("#path-ph").classList.remove("on");
+      fadeTo(false);
+      resetStage();
+      glitch();
+    });
+
+    // ---------- input ----------
+    function advance() {
+      if (locked) return;
+      if (!started) { begin(); return; }
+      const def = SCENES[scene];
+      if (def && def.advance) def.advance(api);
+    }
+    function begin() { started = true; audio.start(); audio.setScene("blue"); goTo("loading"); }
+
+    window.addEventListener("click", (e) => {
+      if (e.target.closest("#hud") || e.target.closest(".world-box") || e.target.closest(".memcard") || e.target.closest("#path-ph")) return;
+      advance();
+    });
+    window.addEventListener("keydown", (e) => {
+      if (["Space", "Enter", "ArrowRight", "ArrowDown"].includes(e.code)) { e.preventDefault(); advance(); }
+    });
+    let wheelLock = false;
+    window.addEventListener("wheel", (e) => {
+      if (wheelLock || Math.abs(e.deltaY) < 18) return;
+      if (e.deltaY > 0) { wheelLock = true; advance(); setTimeout(() => wheelLock = false, 700); }
+    }, { passive: true });
+
+    // ---------- mute ----------
+    let muted = false;
+    $("#mute").addEventListener("click", (e) => {
+      e.stopPropagation();
+      muted = !muted;
+      audio.setMuted(muted);
+      e.target.textContent = muted ? "♪ SOUND OFF" : "♪ SOUND ON";
+      e.target.style.opacity = muted ? 0.5 : 1;
+    });
+
+    // ---------- boot ----------
+    scene = "blue";
+    body.dataset.scene = "blue";
+    viz.setScene("blue");
+    render("blue");
+    updateStep("blue");
+    setHint("click · scroll · space to begin");
+  })();
+  </script>
+
+  <style id="__om-edit-overrides"></style>
+</body>
+</html>
